@@ -82,6 +82,44 @@ summary, artifacts = cross_validate_aps(config=config)
 print(summary)
 ```
 
+## Citation
+
+If you use PI-TSAD in your work, please cite:
+
+Carter Taylor, Conor Porter, Garrett Mathesen, Kyle Mumm, Fred Carter, Jian Cao,
+"PI-TSAD: A physically informed time-series anomaly detection framework for
+real-time monitoring of keyhole collapse in laser powder bed fusion," Journal of
+Manufacturing Processes, Volume 168, 2026, Pages 178-191, ISSN 1526-6125.
+
+DOI: [10.1016/j.jmapro.2026.04.026](https://doi.org/10.1016/j.jmapro.2026.04.026)
+
+ScienceDirect:
+[S152661252600383X](https://www.sciencedirect.com/science/article/pii/S152661252600383X)
+
+Abstract: Reliable in-situ detection of keyhole collapse in Laser Powder Bed
+Fusion (LPBF) remains challenging due to the transient nature of the melt pool
+and the inherent stochasticity of the process. This study presents a physically
+informed, machine learning-based framework that identifies collapse events
+directly from Thermal Energy Density (TED) obtained from coaxial photodiodes
+with a sampling rate of 200 kHz. Power Spectral Density (PSD) analysis of the
+TED signal revealed that low-frequency regions are dominated by pink noise and
+high-frequency regions by white noise, with bulk melt pool motion and collapse
+dynamics confined to the intermediate band. Accordingly, a 0.25-30 kHz
+band-pass filter was applied to the TED signal to isolate the melt pool
+dynamics. Statistical and frequency-domain features from the filtered TED are
+used to train a Random Forest anomaly detection model using ground truth data
+from the Advanced Photon Source, where high-speed operando X-ray imaging
+verified collapse events. Applied to full build TED data from a commercial DMG
+MORI LASERTEC 12 SLM (LPBF) machine, the framework generalizes within the same
+material system and sensing modality without retraining, preserving a strong
+correlation between predicted anomalies and part-level CT-measured porosity. By
+integrating physics-based filtering, feature-driven learning, and adaptive
+thresholding, this method provides a scalable and interpretable foundation for
+real-time LPBF defect detection and monitoring.
+
+Keywords: Laser powder bed fusion; Keyhole porosity; Time series anomaly
+detection; Random Forest Model
+
 ## Repository Layout
 
 ```text
