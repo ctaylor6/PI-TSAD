@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pi-tsad"
+version = "0.1.0"
+description = "PI-TSAD tools for TED signal anomaly detection in LPBF datasets."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "PI-TSAD contributors" }
+]
+dependencies = [
+  "joblib>=1.3",
+  "matplotlib>=3.7",
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "scikit-learn>=1.3",
+  "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+  "ruff>=0.4",
+]
+
+[project.scripts]
+pi-tsad = "pi_tsad.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
