@@ -110,7 +110,7 @@ def create_aps_sample_3_animation(
         signal_bottom,
         signal_top,
     )
-    legend_x_ms = 6.75
+    legend_x_ms = 8.45
     signal_ax.legend(
         loc="upper right",
         bbox_to_anchor=(legend_x_ms, signal_top),
