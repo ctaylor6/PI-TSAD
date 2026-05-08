@@ -8,6 +8,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 
 from pi_tsad.features import bandpass_filter, extract_features_with_times
 from pi_tsad.thresholding import robust_threshold
@@ -44,6 +45,7 @@ class PITSADModel:
 
     def __init__(self, config: PITSADConfig | None = None) -> None:
         self.config = config or PITSADConfig()
+        self.scaler = StandardScaler()
         self.classifier = RandomForestClassifier(
             n_estimators=self.config.n_estimators,
             class_weight=self.config.class_weight,
@@ -69,12 +71,20 @@ class PITSADModel:
     def fit(self, feature_blocks: list[np.ndarray], label_blocks: list[np.ndarray]) -> "PITSADModel":
         features = np.vstack(feature_blocks)
         labels = np.concatenate(label_blocks)
-        self.classifier.fit(features, labels)
+        features_scaled = self.scaler.fit_transform(features)
+        self.classifier.fit(features_scaled, labels)
         return self
 
-    def predict_signal(self, time: np.ndarray, signal: np.ndarray) -> PredictionResult:
+    def predict_signal(
+        self,
+        time: np.ndarray,
+        signal: np.ndarray,
+        *,
+        scale_features: bool = True,
+    ) -> PredictionResult:
         features, _, centers, processed_signal = self.make_features(time, signal)
-        probabilities = self.classifier.predict_proba(features)[:, 1]
+        inference_features = self.scaler.transform(features) if scale_features else features
+        probabilities = self.classifier.predict_proba(inference_features)[:, 1]
         threshold, _, _, _, _, anomaly_indices = robust_threshold(
             probabilities,
             alpha=self.config.alpha,
@@ -96,6 +106,7 @@ class PITSADModel:
         joblib.dump(
             {
                 "config": self.config,
+                "scaler": self.scaler,
                 "classifier": self.classifier,
                 "feature_names": self.feature_names,
             },
@@ -106,6 +117,7 @@ class PITSADModel:
     def load(cls, path: str | Path) -> "PITSADModel":
         state = joblib.load(path)
         model = cls(state["config"])
+        model.scaler = state["scaler"]
         model.classifier = state["classifier"]
         model.feature_names = state.get("feature_names")
         return model

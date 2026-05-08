@@ -162,7 +162,7 @@ def run_detect_part(args: argparse.Namespace) -> int:
         raise ValueError("No rows available after layer/max-rows filtering.")
 
     time = df.index.to_numpy(dtype=float)
-    result = model.predict_signal(time, df["TED"].to_numpy(dtype=float))
+    result = model.predict_signal(time, df["TED"].to_numpy(dtype=float), scale_features=False)
     cutoff = args.cutoff if args.cutoff is not None else float(np.asarray(result.threshold).mean())
     labels = (result.probabilities > cutoff).astype(int)
     output = pd.DataFrame(
@@ -251,7 +251,7 @@ def run_detect_batch(args: argparse.Namespace) -> int:
             raise ValueError(f"No rows available after filtering {csv_file}.")
 
         time = df.index.to_numpy(dtype=float)
-        result = model.predict_signal(time, df["TED"].to_numpy(dtype=float))
+        result = model.predict_signal(time, df["TED"].to_numpy(dtype=float), scale_features=False)
         cutoff = cutoff_from_probabilities(result.probabilities, cutoff=args.cutoff, alpha=args.alpha)
         labels = (result.probabilities > cutoff).astype(int)
 

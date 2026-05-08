@@ -101,8 +101,10 @@ from each saved probability distribution using `--alpha`. The histogram outputs
 are KDE-style probability-density plots with nominal/anomalous regions split at
 the actual selected cutoff. Full-scale inference follows the original PI-TSAD
 notebook logic: bandpass filter the TED signal, extract features, run
-`predict_proba`, and threshold probabilities without fitting a new scaler to the
-full-scale part.
+`predict_proba`, and threshold probabilities without transforming the full-scale
+part features. APS training and APS cross-validation still fit and use the
+training `StandardScaler`; the scaler is intentionally skipped only for
+full-scale part inference.
 
 ## Python API
 
