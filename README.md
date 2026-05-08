@@ -81,25 +81,28 @@ probabilities:
 ```bash
 pi-tsad detect-batch models/pi_tsad_aps.joblib "part-scale/*.csv" \
   --output-dir outputs/part-scale \
-  --hist-dir outputs/part-scale-histograms \
   --summary-plot outputs/part-scale_probability_distributions.png
 ```
 
-This writes one `*_probabilities.csv` per input file. Those probability files
-let you change the cutoff later without rerunning the full part:
+This writes one folder per input file, for example
+`outputs/part-scale/D0041_1/probabilities.csv` and
+`outputs/part-scale/D0041_1/probability_distribution.png`. Those probability
+files let you change the cutoff later without rerunning the full part:
 
 ```bash
-pi-tsad threshold-probabilities "outputs/part-scale/*_probabilities.csv" \
+pi-tsad threshold-probabilities "outputs/part-scale/*/probabilities.csv" \
   --cutoff 0.35 \
   --output-dir outputs/cutoff-035 \
-  --hist-dir outputs/cutoff-035-histograms \
   --summary-plot outputs/cutoff-035_probability_distributions.png
 ```
 
 If `--cutoff` is omitted, PI-TSAD recomputes the empirical probability cutoff
 from each saved probability distribution using `--alpha`. The histogram outputs
 are KDE-style probability-density plots with nominal/anomalous regions split at
-the actual selected cutoff.
+the actual selected cutoff. Full-scale inference follows the original PI-TSAD
+notebook logic: bandpass filter the TED signal, extract features, run
+`predict_proba`, and threshold probabilities without fitting a new scaler to the
+full-scale part.
 
 ## Python API
 

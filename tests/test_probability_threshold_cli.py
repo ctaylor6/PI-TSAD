@@ -31,8 +31,8 @@ def test_threshold_probabilities_reuses_saved_scores(tmp_path):
     )
 
     assert exit_code == 0
-    thresholded = list(output_dir.glob("*_cutoff_0.5.csv"))
-    histograms = list(hist_dir.glob("*_histogram.png"))
+    thresholded = list(output_dir.glob("part/thresholded_cutoff_0.5.csv"))
+    histograms = list(hist_dir.glob("part/probability_distribution_cutoff_0.5.png"))
     assert len(thresholded) == 1
     assert len(histograms) == 1
     assert summary_plot.exists()

@@ -52,7 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("model", type=Path)
     batch.add_argument("csv_files", nargs="+", help="CSV paths or quoted glob patterns, e.g. 'part-scale/*.csv'.")
     batch.add_argument("--output-dir", type=Path, default=Path("outputs/part-scale"))
-    batch.add_argument("--hist-dir", type=Path, default=None, help="Optional directory for probability histograms.")
+    batch.add_argument(
+        "--hist-dir",
+        type=Path,
+        default=None,
+        help="Optional legacy root for histograms. By default, histograms are saved inside each part folder.",
+    )
     batch.add_argument("--layer", type=int, default=None, help="Optional layer to analyze for every CSV.")
     batch.add_argument("--max-rows", type=int, default=None, help="Optional row limit for a quick run.")
     batch.add_argument("--cutoff", type=float, default=None, help="Optional fixed probability cutoff.")
@@ -72,7 +77,12 @@ def build_parser() -> argparse.ArgumentParser:
     threshold.add_argument("--cutoff", type=float, default=None, help="Fixed probability cutoff to apply.")
     threshold.add_argument("--alpha", type=float, default=0.06, help="Empirical cutoff alpha when --cutoff is omitted.")
     threshold.add_argument("--output-dir", type=Path, default=Path("outputs/rethresholded"))
-    threshold.add_argument("--hist-dir", type=Path, default=Path("outputs/histograms"))
+    threshold.add_argument(
+        "--hist-dir",
+        type=Path,
+        default=None,
+        help="Optional legacy root for histograms. By default, histograms are saved inside each part folder.",
+    )
     threshold.add_argument(
         "--summary-plot",
         type=Path,
@@ -210,6 +220,12 @@ def part_label(index: int, path: Path) -> str:
     return f"Part {index + 1}"
 
 
+def part_name_from_probability_csv(path: Path) -> str:
+    if path.name == "probabilities.csv":
+        return path.parent.name
+    return path.stem.removesuffix("_probabilities")
+
+
 def run_detect_batch(args: argparse.Namespace) -> int:
     model = PITSADModel.load(args.model)
     csv_files = expand_paths(args.csv_files)
@@ -224,6 +240,8 @@ def run_detect_batch(args: argparse.Namespace) -> int:
     distributions = []
     for csv_file in csv_files:
         print(f"Processing {csv_file}...")
+        part_dir = args.output_dir / csv_file.stem
+        part_dir.mkdir(parents=True, exist_ok=True)
         df = load_part_csv(csv_file)
         if args.layer is not None:
             df = df.query("layer == @args.layer").copy()
@@ -246,14 +264,25 @@ def run_detect_batch(args: argparse.Namespace) -> int:
                 "cutoff": cutoff,
             }
         )
-        output_path = args.output_dir / f"{csv_file.stem}_probabilities.csv"
+        output_path = part_dir / "probabilities.csv"
         output.to_csv(output_path, index=False)
 
         hist_path = None
         if args.hist_dir:
             from pi_tsad.visualization import plot_probability_histogram
 
-            hist_path = args.hist_dir / f"{csv_file.stem}_histogram.png"
+            hist_dir = args.hist_dir / csv_file.stem
+            hist_path = hist_dir / "probability_distribution.png"
+            plot_probability_histogram(
+                result.probabilities,
+                cutoff=cutoff,
+                title=f"PI-TSAD probabilities: {csv_file.stem}",
+                output_path=hist_path,
+            )
+        else:
+            from pi_tsad.visualization import plot_probability_histogram
+
+            hist_path = part_dir / "probability_distribution.png"
             plot_probability_histogram(
                 result.probabilities,
                 cutoff=cutoff,
@@ -297,11 +326,15 @@ def run_threshold_probabilities(args: argparse.Namespace) -> int:
     if missing:
         raise FileNotFoundError(f"Missing probability CSV file(s): {', '.join(str(path) for path in missing)}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    args.hist_dir.mkdir(parents=True, exist_ok=True)
+    if args.hist_dir:
+        args.hist_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
     distributions = []
     for i, probability_csv in enumerate(probability_csvs):
+        part_name = part_name_from_probability_csv(probability_csv)
+        part_dir = args.output_dir / part_name
+        part_dir.mkdir(parents=True, exist_ok=True)
         df = pd.read_csv(probability_csv)
         if "anomaly_probability" not in df.columns:
             raise ValueError(f"{probability_csv} must contain an 'anomaly_probability' column.")
@@ -315,12 +348,13 @@ def run_threshold_probabilities(args: argparse.Namespace) -> int:
         df["anomaly_label"] = labels
         df["cutoff"] = cutoff
 
-        output_path = args.output_dir / f"{probability_csv.stem}_cutoff_{cutoff:.4g}.csv"
+        output_path = part_dir / f"thresholded_cutoff_{cutoff:.4g}.csv"
         df.to_csv(output_path, index=False)
 
         from pi_tsad.visualization import plot_probability_histogram
 
-        hist_path = args.hist_dir / f"{probability_csv.stem}_cutoff_{cutoff:.4g}_histogram.png"
+        hist_dir = args.hist_dir / part_name if args.hist_dir else part_dir
+        hist_path = hist_dir / f"probability_distribution_cutoff_{cutoff:.4g}.png"
         plot_probability_histogram(
             probabilities,
             cutoff=cutoff,
@@ -340,7 +374,7 @@ def run_threshold_probabilities(args: argparse.Namespace) -> int:
         if args.summary_plot:
             from pi_tsad.visualization import ProbabilityDistribution
 
-            distributions.append(ProbabilityDistribution(part_label(i, probability_csv), probabilities, cutoff))
+            distributions.append(ProbabilityDistribution(part_label(i, Path(part_name)), probabilities, cutoff))
         print(f"Saved {output_path} and {hist_path}")
 
     summary = pd.DataFrame(rows)
