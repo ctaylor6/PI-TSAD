@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import argparse
+from glob import glob
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from pi_tsad.data import load_part_csv
 from pi_tsad.evaluation import cross_validate_aps, train_aps_model
 from pi_tsad.model import PITSADConfig, PITSADModel
+from pi_tsad.thresholding import robust_threshold
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,6 +42,31 @@ def build_parser() -> argparse.ArgumentParser:
     detect.add_argument("--layer", type=int, default=None, help="Optional layer to analyze.")
     detect.add_argument("--max-rows", type=int, default=None, help="Optional row limit for a quick run.")
     detect.add_argument("--output", type=Path, default=Path("outputs/part_anomalies.csv"))
+    detect.add_argument("--cutoff", type=float, default=None, help="Optional fixed probability cutoff.")
+    detect.add_argument("--histogram", type=Path, default=None, help="Optional histogram PNG output.")
+
+    batch = subparsers.add_parser(
+        "detect-batch",
+        help="Apply a trained model to one or more full part CSVs and save reusable probabilities.",
+    )
+    batch.add_argument("model", type=Path)
+    batch.add_argument("csv_files", nargs="+", help="CSV paths or quoted glob patterns, e.g. 'part-scale/*.csv'.")
+    batch.add_argument("--output-dir", type=Path, default=Path("outputs/part-scale"))
+    batch.add_argument("--hist-dir", type=Path, default=None, help="Optional directory for probability histograms.")
+    batch.add_argument("--layer", type=int, default=None, help="Optional layer to analyze for every CSV.")
+    batch.add_argument("--max-rows", type=int, default=None, help="Optional row limit for a quick run.")
+    batch.add_argument("--cutoff", type=float, default=None, help="Optional fixed probability cutoff.")
+    batch.add_argument("--alpha", type=float, default=0.06, help="Empirical cutoff alpha when --cutoff is omitted.")
+
+    threshold = subparsers.add_parser(
+        "threshold-probabilities",
+        help="Re-threshold saved probability CSVs and remake histograms without rerunning model inference.",
+    )
+    threshold.add_argument("probability_csvs", nargs="+", help="Probability CSV paths or quoted glob patterns.")
+    threshold.add_argument("--cutoff", type=float, default=None, help="Fixed probability cutoff to apply.")
+    threshold.add_argument("--alpha", type=float, default=0.06, help="Empirical cutoff alpha when --cutoff is omitted.")
+    threshold.add_argument("--output-dir", type=Path, default=Path("outputs/rethresholded"))
+    threshold.add_argument("--hist-dir", type=Path, default=Path("outputs/histograms"))
 
     return parser
 
@@ -113,16 +141,175 @@ def run_detect_part(args: argparse.Namespace) -> int:
 
     time = df.index.to_numpy(dtype=float)
     result = model.predict_signal(time, df["TED"].to_numpy(dtype=float))
+    cutoff = args.cutoff if args.cutoff is not None else float(np.asarray(result.threshold).mean())
+    labels = (result.probabilities > cutoff).astype(int)
     output = pd.DataFrame(
         {
             "center_index": result.centers,
             "anomaly_probability": result.probabilities,
-            "anomaly_label": result.labels,
+            "anomaly_label": labels,
         }
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     output.to_csv(args.output, index=False)
+    if args.histogram:
+        from pi_tsad.visualization import plot_probability_histogram
+
+        plot_probability_histogram(
+            result.probabilities,
+            cutoff=cutoff,
+            title=f"PI-TSAD probabilities: {args.csv_file.stem}",
+            output_path=args.histogram,
+        )
     print(f"Saved {len(output):,} window predictions to {args.output}")
+    print(f"Cutoff: {cutoff:.6g}; anomalous windows: {int(labels.sum()):,}")
+    return 0
+
+
+def expand_paths(patterns: list[str]) -> list[Path]:
+    paths: list[Path] = []
+    for pattern in patterns:
+        matches = sorted(glob(pattern))
+        if matches:
+            paths.extend(Path(match) for match in matches)
+        else:
+            paths.append(Path(pattern))
+    unique_paths = []
+    seen = set()
+    for path in paths:
+        resolved = str(path)
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_paths.append(path)
+    return unique_paths
+
+
+def cutoff_from_probabilities(probabilities: np.ndarray, *, cutoff: float | None, alpha: float) -> float:
+    if cutoff is not None:
+        return float(cutoff)
+    threshold, *_ = robust_threshold(probabilities, alpha=alpha, mode="empirical")
+    return float(np.asarray(threshold).mean())
+
+
+def run_detect_batch(args: argparse.Namespace) -> int:
+    model = PITSADModel.load(args.model)
+    csv_files = expand_paths(args.csv_files)
+    missing = [path for path in csv_files if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing CSV file(s): {', '.join(str(path) for path in missing)}")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    if args.hist_dir:
+        args.hist_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    for csv_file in csv_files:
+        print(f"Processing {csv_file}...")
+        df = load_part_csv(csv_file)
+        if args.layer is not None:
+            df = df.query("layer == @args.layer").copy()
+        if args.max_rows is not None:
+            df = df.iloc[: args.max_rows].copy()
+        if df.empty:
+            raise ValueError(f"No rows available after filtering {csv_file}.")
+
+        time = df.index.to_numpy(dtype=float)
+        result = model.predict_signal(time, df["TED"].to_numpy(dtype=float))
+        cutoff = cutoff_from_probabilities(result.probabilities, cutoff=args.cutoff, alpha=args.alpha)
+        labels = (result.probabilities > cutoff).astype(int)
+
+        output = pd.DataFrame(
+            {
+                "source_csv": str(csv_file),
+                "center_index": result.centers,
+                "anomaly_probability": result.probabilities,
+                "anomaly_label": labels,
+            }
+        )
+        output_path = args.output_dir / f"{csv_file.stem}_probabilities.csv"
+        output.to_csv(output_path, index=False)
+
+        hist_path = None
+        if args.hist_dir:
+            from pi_tsad.visualization import plot_probability_histogram
+
+            hist_path = args.hist_dir / f"{csv_file.stem}_histogram.png"
+            plot_probability_histogram(
+                result.probabilities,
+                cutoff=cutoff,
+                title=f"PI-TSAD probabilities: {csv_file.stem}",
+                output_path=hist_path,
+            )
+
+        rows.append(
+            {
+                "source_csv": str(csv_file),
+                "probability_csv": str(output_path),
+                "histogram": str(hist_path) if hist_path else "",
+                "cutoff": cutoff,
+                "n_windows": len(output),
+                "n_anomalous": int(labels.sum()),
+            }
+        )
+        print(f"  saved {output_path} | cutoff={cutoff:.6g} | anomalous={int(labels.sum()):,}")
+
+    summary = pd.DataFrame(rows)
+    summary_path = args.output_dir / "summary.csv"
+    summary.to_csv(summary_path, index=False)
+    print(f"Saved batch summary to {summary_path}")
+    return 0
+
+
+def run_threshold_probabilities(args: argparse.Namespace) -> int:
+    probability_csvs = expand_paths(args.probability_csvs)
+    missing = [path for path in probability_csvs if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing probability CSV file(s): {', '.join(str(path) for path in missing)}")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.hist_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    for probability_csv in probability_csvs:
+        df = pd.read_csv(probability_csv)
+        if "anomaly_probability" not in df.columns:
+            raise ValueError(f"{probability_csv} must contain an 'anomaly_probability' column.")
+        probabilities = pd.to_numeric(df["anomaly_probability"], errors="coerce").to_numpy(dtype=float)
+        valid = np.isfinite(probabilities)
+        if not valid.all():
+            df = df.loc[valid].copy()
+            probabilities = probabilities[valid]
+        cutoff = cutoff_from_probabilities(probabilities, cutoff=args.cutoff, alpha=args.alpha)
+        labels = (probabilities > cutoff).astype(int)
+        df["anomaly_label"] = labels
+        df["cutoff"] = cutoff
+
+        output_path = args.output_dir / f"{probability_csv.stem}_cutoff_{cutoff:.4g}.csv"
+        df.to_csv(output_path, index=False)
+
+        from pi_tsad.visualization import plot_probability_histogram
+
+        hist_path = args.hist_dir / f"{probability_csv.stem}_cutoff_{cutoff:.4g}_histogram.png"
+        plot_probability_histogram(
+            probabilities,
+            cutoff=cutoff,
+            title=f"PI-TSAD probabilities: {probability_csv.stem}",
+            output_path=hist_path,
+        )
+        rows.append(
+            {
+                "probability_csv": str(probability_csv),
+                "thresholded_csv": str(output_path),
+                "histogram": str(hist_path),
+                "cutoff": cutoff,
+                "n_windows": len(df),
+                "n_anomalous": int(labels.sum()),
+            }
+        )
+        print(f"Saved {output_path} and {hist_path}")
+
+    summary = pd.DataFrame(rows)
+    summary_path = args.output_dir / "summary.csv"
+    summary.to_csv(summary_path, index=False)
+    print(f"Saved threshold summary to {summary_path}")
     return 0
 
 
@@ -135,6 +322,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_train_aps(args)
     if args.command == "detect-part":
         return run_detect_part(args)
+    if args.command == "detect-batch":
+        return run_detect_batch(args)
+    if args.command == "threshold-probabilities":
+        return run_threshold_probabilities(args)
     parser.error(f"Unknown command: {args.command}")
     return 2
 

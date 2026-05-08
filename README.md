@@ -75,6 +75,28 @@ pi-tsad detect-part models/pi_tsad_aps.joblib path/to/full_part.csv \
   --output outputs/layer_150_predictions.csv
 ```
 
+For multiple full-scale CSVs, run the slow model pass once and save reusable
+probabilities:
+
+```bash
+pi-tsad detect-batch models/pi_tsad_aps.joblib "part-scale/*.csv" \
+  --output-dir outputs/part-scale \
+  --hist-dir outputs/part-scale-histograms
+```
+
+This writes one `*_probabilities.csv` per input file. Those probability files
+let you change the cutoff later without rerunning the full part:
+
+```bash
+pi-tsad threshold-probabilities "outputs/part-scale/*_probabilities.csv" \
+  --cutoff 0.35 \
+  --output-dir outputs/cutoff-035 \
+  --hist-dir outputs/cutoff-035-histograms
+```
+
+If `--cutoff` is omitted, PI-TSAD recomputes the empirical probability cutoff
+from each saved probability distribution using `--alpha`.
+
 ## Python API
 
 ```python

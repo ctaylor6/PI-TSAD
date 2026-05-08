@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -114,6 +117,54 @@ def plot_cross_validation_probabilities(
     fig.suptitle(title, y=1.0)
     fig.tight_layout()
     if output_path is not None:
+        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    else:
+        plt.show()
+    plt.close(fig)
+
+
+def plot_probability_histogram(
+    probabilities: np.ndarray,
+    *,
+    cutoff: float,
+    title: str = "PI-TSAD Probability Histogram",
+    output_path: str | Path | None = None,
+    bins: int = 60,
+) -> None:
+    """Plot nominal/anomalous probability histograms with a cutoff marker."""
+    probabilities = np.asarray(probabilities, dtype=float)
+    nominal = probabilities[probabilities <= cutoff]
+    anomalous = probabilities[probabilities > cutoff]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    hist_range = (0.0, max(1.0, float(np.nanmax(probabilities)) if probabilities.size else 1.0))
+    ax.hist(
+        nominal,
+        bins=bins,
+        range=hist_range,
+        color="#4C78A8",
+        alpha=0.72,
+        label=f"Nominal (n={len(nominal):,})",
+    )
+    ax.hist(
+        anomalous,
+        bins=bins,
+        range=hist_range,
+        color="#C44E52",
+        alpha=0.72,
+        label=f"Anomalous (n={len(anomalous):,})",
+    )
+    ax.axvline(cutoff, color="#111111", linestyle="--", linewidth=1.5, label=f"Cutoff = {cutoff:.4g}")
+    ax.set_title(title)
+    ax.set_xlabel("Predicted anomaly probability")
+    ax.set_ylabel("Window count")
+    ax.set_xlim(hist_range)
+    ax.grid(True, axis="y", alpha=0.25)
+    ax.legend(loc="best", frameon=False)
+    fig.tight_layout()
+
+    if output_path is not None:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_path, dpi=200, bbox_inches="tight")
     else:
         plt.show()
