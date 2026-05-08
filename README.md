@@ -81,7 +81,8 @@ probabilities:
 ```bash
 pi-tsad detect-batch models/pi_tsad_aps.joblib "part-scale/*.csv" \
   --output-dir outputs/part-scale \
-  --hist-dir outputs/part-scale-histograms
+  --hist-dir outputs/part-scale-histograms \
+  --summary-plot outputs/part-scale_probability_distributions.png
 ```
 
 This writes one `*_probabilities.csv` per input file. Those probability files
@@ -91,11 +92,14 @@ let you change the cutoff later without rerunning the full part:
 pi-tsad threshold-probabilities "outputs/part-scale/*_probabilities.csv" \
   --cutoff 0.35 \
   --output-dir outputs/cutoff-035 \
-  --hist-dir outputs/cutoff-035-histograms
+  --hist-dir outputs/cutoff-035-histograms \
+  --summary-plot outputs/cutoff-035_probability_distributions.png
 ```
 
 If `--cutoff` is omitted, PI-TSAD recomputes the empirical probability cutoff
-from each saved probability distribution using `--alpha`.
+from each saved probability distribution using `--alpha`. The histogram outputs
+are KDE-style probability-density plots with nominal/anomalous regions split at
+the actual selected cutoff.
 
 ## Python API
 

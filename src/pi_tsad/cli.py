@@ -57,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--max-rows", type=int, default=None, help="Optional row limit for a quick run.")
     batch.add_argument("--cutoff", type=float, default=None, help="Optional fixed probability cutoff.")
     batch.add_argument("--alpha", type=float, default=0.06, help="Empirical cutoff alpha when --cutoff is omitted.")
+    batch.add_argument(
+        "--summary-plot",
+        type=Path,
+        default=None,
+        help="Optional combined probability-density plot for all processed CSVs.",
+    )
 
     threshold = subparsers.add_parser(
         "threshold-probabilities",
@@ -67,6 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
     threshold.add_argument("--alpha", type=float, default=0.06, help="Empirical cutoff alpha when --cutoff is omitted.")
     threshold.add_argument("--output-dir", type=Path, default=Path("outputs/rethresholded"))
     threshold.add_argument("--hist-dir", type=Path, default=Path("outputs/histograms"))
+    threshold.add_argument(
+        "--summary-plot",
+        type=Path,
+        default=None,
+        help="Optional combined probability-density plot after applying the selected cutoff.",
+    )
 
     return parser
 
@@ -191,6 +203,13 @@ def cutoff_from_probabilities(probabilities: np.ndarray, *, cutoff: float | None
     return float(np.asarray(threshold).mean())
 
 
+def part_label(index: int, path: Path) -> str:
+    numeric_suffix = path.stem.rsplit("_", maxsplit=1)[-1]
+    if numeric_suffix.isdigit():
+        return f"Part {int(numeric_suffix)}"
+    return f"Part {index + 1}"
+
+
 def run_detect_batch(args: argparse.Namespace) -> int:
     model = PITSADModel.load(args.model)
     csv_files = expand_paths(args.csv_files)
@@ -202,6 +221,7 @@ def run_detect_batch(args: argparse.Namespace) -> int:
         args.hist_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
+    distributions = []
     for csv_file in csv_files:
         print(f"Processing {csv_file}...")
         df = load_part_csv(csv_file)
@@ -223,6 +243,7 @@ def run_detect_batch(args: argparse.Namespace) -> int:
                 "center_index": result.centers,
                 "anomaly_probability": result.probabilities,
                 "anomaly_label": labels,
+                "cutoff": cutoff,
             }
         )
         output_path = args.output_dir / f"{csv_file.stem}_probabilities.csv"
@@ -250,11 +271,22 @@ def run_detect_batch(args: argparse.Namespace) -> int:
                 "n_anomalous": int(labels.sum()),
             }
         )
+        if args.summary_plot:
+            from pi_tsad.visualization import ProbabilityDistribution
+
+            distributions.append(
+                ProbabilityDistribution(part_label(len(distributions), csv_file), result.probabilities, cutoff)
+            )
         print(f"  saved {output_path} | cutoff={cutoff:.6g} | anomalous={int(labels.sum()):,}")
 
     summary = pd.DataFrame(rows)
     summary_path = args.output_dir / "summary.csv"
     summary.to_csv(summary_path, index=False)
+    if args.summary_plot:
+        from pi_tsad.visualization import plot_probability_distribution_grid
+
+        plot_probability_distribution_grid(distributions, output_path=args.summary_plot)
+        print(f"Saved combined probability-density plot to {args.summary_plot}")
     print(f"Saved batch summary to {summary_path}")
     return 0
 
@@ -268,7 +300,8 @@ def run_threshold_probabilities(args: argparse.Namespace) -> int:
     args.hist_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
-    for probability_csv in probability_csvs:
+    distributions = []
+    for i, probability_csv in enumerate(probability_csvs):
         df = pd.read_csv(probability_csv)
         if "anomaly_probability" not in df.columns:
             raise ValueError(f"{probability_csv} must contain an 'anomaly_probability' column.")
@@ -304,11 +337,20 @@ def run_threshold_probabilities(args: argparse.Namespace) -> int:
                 "n_anomalous": int(labels.sum()),
             }
         )
+        if args.summary_plot:
+            from pi_tsad.visualization import ProbabilityDistribution
+
+            distributions.append(ProbabilityDistribution(part_label(i, probability_csv), probabilities, cutoff))
         print(f"Saved {output_path} and {hist_path}")
 
     summary = pd.DataFrame(rows)
     summary_path = args.output_dir / "summary.csv"
     summary.to_csv(summary_path, index=False)
+    if args.summary_plot:
+        from pi_tsad.visualization import plot_probability_distribution_grid
+
+        plot_probability_distribution_grid(distributions, output_path=args.summary_plot)
+        print(f"Saved combined probability-density plot to {args.summary_plot}")
     print(f"Saved threshold summary to {summary_path}")
     return 0
 

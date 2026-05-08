@@ -14,6 +14,7 @@ def test_threshold_probabilities_reuses_saved_scores(tmp_path):
 
     output_dir = tmp_path / "thresholded"
     hist_dir = tmp_path / "histograms"
+    summary_plot = tmp_path / "summary.png"
     exit_code = main(
         [
             "threshold-probabilities",
@@ -24,6 +25,8 @@ def test_threshold_probabilities_reuses_saved_scores(tmp_path):
             str(output_dir),
             "--hist-dir",
             str(hist_dir),
+            "--summary-plot",
+            str(summary_plot),
         ]
     )
 
@@ -32,5 +35,6 @@ def test_threshold_probabilities_reuses_saved_scores(tmp_path):
     histograms = list(hist_dir.glob("*_histogram.png"))
     assert len(thresholded) == 1
     assert len(histograms) == 1
+    assert summary_plot.exists()
     df = pd.read_csv(thresholded[0])
     assert df["anomaly_label"].tolist() == [0, 0, 1, 1]

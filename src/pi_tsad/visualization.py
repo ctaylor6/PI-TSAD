@@ -3,12 +3,116 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import NamedTuple
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
+from scipy.stats import gaussian_kde
+
+
+class ProbabilityDistribution(NamedTuple):
+    """Probability distribution data for one part/file."""
+
+    label: str
+    probabilities: np.ndarray
+    cutoff: float
+
+
+PROBABILITY_DENSITY_STYLE = {
+    "font.family": "serif",
+    "font.serif": ["Times New Roman", "Times", "Computer Modern Roman"],
+    "mathtext.fontset": "cm",
+    "axes.linewidth": 0.8,
+    "axes.labelsize": 14,
+    "axes.titlesize": 12,
+    "xtick.labelsize": 15,
+    "ytick.labelsize": 15,
+    "legend.fontsize": 13,
+    "axes.edgecolor": "black",
+    "axes.labelpad": 5,
+    "grid.alpha": 0.35,
+    "figure.dpi": 600,
+    "savefig.dpi": 600,
+}
+
+
+def _clean_decimal(x: float, _pos: int) -> str:
+    if float(x).is_integer():
+        return f"{int(x)}"
+    return f"{x:.1f}"
+
+
+def _probability_density(probabilities: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    probabilities = np.asarray(probabilities, dtype=float)
+    probabilities = probabilities[np.isfinite(probabilities)]
+    x = np.linspace(0, 1, 500)
+    if probabilities.size < 2 or np.allclose(probabilities, probabilities[0]):
+        density = np.zeros_like(x)
+        if probabilities.size:
+            density[np.argmin(np.abs(x - probabilities[0]))] = 1.0
+        return x, density
+    kde = gaussian_kde(np.clip(probabilities, 0, 1))
+    return x, kde(x)
+
+
+def _style_probability_density_axis(
+    ax,
+    *,
+    index: int,
+    label: str,
+    cutoff: float,
+    show_xlabel: bool,
+    show_ylabel: bool,
+) -> None:
+    cutoff = float(np.clip(cutoff, 0, 1))
+    ax.axvspan(0, cutoff, color="green", alpha=0.12, zorder=0)
+    ax.axvspan(cutoff, 1, color="red", alpha=0.12, zorder=0)
+    ax.axvline(cutoff, color="red", ls="--", lw=1.1, label="Threshold")
+
+    y_text = 0.85 * ax.get_ylim()[1]
+    nominal_x = cutoff / 2 if cutoff > 0 else 0.08
+    anomalous_x = cutoff + (1 - cutoff) / 2 if cutoff < 1 else 0.92
+    ax.text(
+        nominal_x,
+        y_text,
+        "Nominal\nRegion",
+        color="green",
+        fontsize=16,
+        ha="center",
+        va="center",
+        fontstyle="italic",
+    )
+    ax.text(
+        anomalous_x,
+        y_text,
+        "Anomalous\nRegion",
+        color="red",
+        fontsize=16,
+        ha="center",
+        va="center",
+        fontstyle="italic",
+    )
+
+    ax.set_title(f"({chr(97 + index)}) {label}", loc="left", pad=5, fontsize=18)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, ls="--", lw=0.4, alpha=0.55)
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(0.2))
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.1))
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(_clean_decimal))
+    ax.tick_params(axis="both", which="major", labelsize=15)
+    ax.tick_params(axis="x", which="minor", length=3, width=0.8)
+
+    if not show_ylabel:
+        ax.set_ylabel("")
+        ax.set_yticklabels([])
+    if not show_xlabel:
+        ax.set_xlabel("")
+        ax.set_xticklabels([])
 
 
 def plot_detection(
@@ -131,41 +235,86 @@ def plot_probability_histogram(
     output_path: str | Path | None = None,
     bins: int = 60,
 ) -> None:
-    """Plot nominal/anomalous probability histograms with a cutoff marker."""
-    probabilities = np.asarray(probabilities, dtype=float)
-    nominal = probabilities[probabilities <= cutoff]
-    anomalous = probabilities[probabilities > cutoff]
-
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    hist_range = (0.0, max(1.0, float(np.nanmax(probabilities)) if probabilities.size else 1.0))
-    ax.hist(
-        nominal,
-        bins=bins,
-        range=hist_range,
-        color="#4C78A8",
-        alpha=0.72,
-        label=f"Nominal (n={len(nominal):,})",
+    """Plot a publication-style probability density with the PI-TSAD cutoff."""
+    del bins
+    distribution = ProbabilityDistribution("Part", probabilities, cutoff)
+    plot_probability_distribution_grid(
+        [distribution],
+        output_path=output_path,
+        title=title,
+        columns=1,
+        shared_labels=False,
     )
-    ax.hist(
-        anomalous,
-        bins=bins,
-        range=hist_range,
-        color="#C44E52",
-        alpha=0.72,
-        label=f"Anomalous (n={len(anomalous):,})",
-    )
-    ax.axvline(cutoff, color="#111111", linestyle="--", linewidth=1.5, label=f"Cutoff = {cutoff:.4g}")
-    ax.set_title(title)
-    ax.set_xlabel("Predicted anomaly probability")
-    ax.set_ylabel("Window count")
-    ax.set_xlim(hist_range)
-    ax.grid(True, axis="y", alpha=0.25)
-    ax.legend(loc="best", frameon=False)
-    fig.tight_layout()
 
-    if output_path is not None:
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output_path, dpi=200, bbox_inches="tight")
-    else:
-        plt.show()
-    plt.close(fig)
+
+def plot_probability_distribution_grid(
+    distributions: list[ProbabilityDistribution],
+    *,
+    output_path: str | Path | None = None,
+    title: str = "Distribution of Predicted Anomaly Probabilities Across Parts",
+    columns: int = 4,
+    shared_labels: bool = True,
+) -> None:
+    """Plot KDE probability distributions for one or more full-scale parts."""
+    if not distributions:
+        raise ValueError("At least one probability distribution is required.")
+
+    n_parts = len(distributions)
+    columns = max(1, min(columns, n_parts))
+    rows = int(np.ceil(n_parts / columns))
+    figsize = (13, 3 * rows) if columns > 1 else (6.5, 4.8)
+
+    with plt.rc_context(PROBABILITY_DENSITY_STYLE):
+        fig, axes = plt.subplots(rows, columns, figsize=figsize, squeeze=False)
+        flat_axes = axes.flatten()
+
+        for i, distribution in enumerate(distributions):
+            ax = flat_axes[i]
+            x, density = _probability_density(distribution.probabilities)
+            ax.fill_between(x, density, color="slateblue", alpha=0.35, label="KDE")
+            ax.plot(x, density, color="slateblue", lw=1.3)
+            show_xlabel = rows == 1 or i >= columns * (rows - 1)
+            show_ylabel = i % columns == 0
+            _style_probability_density_axis(
+                ax,
+                index=i,
+                label=distribution.label,
+                cutoff=distribution.cutoff,
+                show_xlabel=show_xlabel if shared_labels else True,
+                show_ylabel=show_ylabel if shared_labels else True,
+            )
+
+        for ax in flat_axes[n_parts:]:
+            ax.axis("off")
+
+        if shared_labels:
+            fig.text(0.53, 0.01, "Predicted Probability", ha="center", fontsize=20)
+            fig.text(
+                0.025,
+                0.5,
+                "Probability Density",
+                va="center",
+                rotation="vertical",
+                fontsize=20,
+            )
+            fig.suptitle(title, fontsize=24, y=1.025)
+            fig.subplots_adjust(
+                left=0.08,
+                right=0.97,
+                top=0.92,
+                bottom=0.1,
+                wspace=0.10,
+                hspace=0.15,
+            )
+        else:
+            flat_axes[0].set_xlabel("Predicted Probability")
+            flat_axes[0].set_ylabel("Probability Density")
+            fig.suptitle(title, fontsize=18, y=0.98)
+            fig.tight_layout()
+
+        if output_path is not None:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(output_path, bbox_inches="tight")
+        else:
+            plt.show()
+        plt.close(fig)
