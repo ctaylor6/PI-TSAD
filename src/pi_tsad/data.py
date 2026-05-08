@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pi_tsad.constants import APS_EXPERIMENT_KEYS, APS_START_TIMES
+from pi_tsad.constants import APS_EXPERIMENT_KEYS, APS_SOURCE_IDS, APS_START_TIMES
 
 
 def repo_root() -> Path:
@@ -20,13 +20,17 @@ def default_aps_data_dir() -> Path:
 
 
 def aps_csv_files(data_dir: str | Path | None = None) -> dict[str, Path]:
-    """Return paths for the four APS demonstration CSV files."""
+    """Return paths for the four public APS demonstration CSV files."""
     root = Path(data_dir) if data_dir is not None else default_aps_data_dir()
     return {key: root / f"{key}.csv" for key in APS_EXPERIMENT_KEYS}
 
 
 def experiment_key_from_path(path: str | Path) -> str:
-    return Path(path).stem.zfill(3)
+    stem = Path(path).stem
+    for public_id, source_id in APS_SOURCE_IDS.items():
+        if stem == public_id or stem == source_id:
+            return public_id
+    return stem
 
 
 def load_ted_signal(

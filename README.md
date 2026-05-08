@@ -2,13 +2,13 @@
 
 PI-TSAD is a small Python package for anomaly detection in TED signals from
 laser powder bed fusion experiments. The repo includes a reproducible 4-fold
-cross-validation example on the compact APS datasets `050`, `053`, `074`, and
-`077`, plus a separate path for long-running full-part analysis.
+cross-validation example on the compact APS datasets `1`, `2`, `3`, and `4`,
+plus a separate path for long-running full-part analysis.
 
-![PI-TSAD APS 074 detection process](docs/assets/aps_074_detection_process.gif)
+![PI-TSAD APS sample 3 detection process](docs/assets/aps_sample_3_detection_process.gif)
 
-The animation above trains on APS `050`, `053`, and `077`, then tests on APS
-`074`, sweeping through the TED signal while the anomaly probability is
+The animation above trains on APS samples `1`, `2`, and `4`, then tests on APS
+sample `3`, sweeping through the TED signal while the anomaly probability is
 computed over time.
 
 ## Install

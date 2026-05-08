@@ -107,7 +107,7 @@ def cross_validate_aps(
     data_dir: str | Path | None = None,
     config: PITSADConfig | None = None,
 ) -> tuple[pd.DataFrame, list[FoldArtifacts]]:
-    """Run four-fold leave-one-dataset-out validation on 050, 053, 074, and 077."""
+    """Run four-fold leave-one-dataset-out validation on APS samples 1, 2, 3, and 4."""
     config = config or PITSADConfig()
     artifacts = [
         train_leave_one_out_fold(key, data_dir=data_dir, config=config)

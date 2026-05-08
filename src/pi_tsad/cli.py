@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     cv = subparsers.add_parser("cross-validate-aps", help="Run 4-fold APS cross-validation.")
     add_common_model_args(cv)
-    cv.add_argument("--data-dir", type=Path, default=None, help="Directory containing 050/053/074/077 CSVs.")
+    cv.add_argument("--data-dir", type=Path, default=None, help="Directory containing APS 1/2/3/4 CSVs.")
     cv.add_argument("--save-csv", type=Path, default=None, help="Optional path for metrics CSV output.")
     cv.add_argument("--plot-dir", type=Path, default=None, help="Optional directory for per-fold PNG plots.")
     cv.add_argument(
