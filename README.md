@@ -5,7 +5,11 @@ laser powder bed fusion experiments. The repo includes a reproducible 4-fold
 cross-validation example on the compact APS datasets `050`, `053`, `074`, and
 `077`, plus a separate path for long-running full-part analysis.
 
-![PI-TSAD anomaly detection animation](docs/assets/anomaly_detection_live.gif)
+![PI-TSAD APS 074 detection process](docs/assets/aps_074_detection_process.gif)
+
+The animation above trains on APS `050`, `053`, and `077`, then tests on APS
+`074`, sweeping through the TED signal while the anomaly probability is
+computed over time.
 
 ## Install
 
