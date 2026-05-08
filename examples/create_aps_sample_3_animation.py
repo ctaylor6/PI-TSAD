@@ -76,7 +76,6 @@ def create_aps_sample_3_animation(
     signal_ax.set_title("PI-TSAD leave-one-out detection on APS sample 3")
     signal_ax.set_ylabel("Filtered TED")
     signal_ax.grid(True, alpha=0.25)
-    signal_ax.legend(loc="upper right")
 
     prob_ax.plot(centers_ms, prediction.probabilities, color="#ded3ef", linewidth=1.0)
     prob_line, = prob_ax.plot([], [], color="#5e3c99", linewidth=2.0, label="Anomaly probability")
@@ -99,15 +98,28 @@ def create_aps_sample_3_animation(
 
     prob_ax.set_xlabel("Time (ms)")
     prob_ax.set_ylabel("Probability")
-    prob_ax.set_ylim(0, max(1.0, float(np.max(prediction.probabilities)) * 1.15))
+    prob_top = max(1.0, float(np.max(prediction.probabilities)) * 1.15)
+    prob_ax.set_ylim(0, prob_top)
     prob_ax.grid(True, alpha=0.25)
-    prob_ax.legend(loc="upper right")
 
     signal_ax.set_xlim(time_ms[0], time_ms[-1])
     y_margin = 0.08 * (float(np.max(prediction.processed_signal)) - float(np.min(prediction.processed_signal)))
+    signal_bottom = float(np.min(prediction.processed_signal)) - y_margin
+    signal_top = float(np.max(prediction.processed_signal)) + y_margin
     signal_ax.set_ylim(
-        float(np.min(prediction.processed_signal)) - y_margin,
-        float(np.max(prediction.processed_signal)) + y_margin,
+        signal_bottom,
+        signal_top,
+    )
+    legend_x_ms = 6.75
+    signal_ax.legend(
+        loc="upper right",
+        bbox_to_anchor=(legend_x_ms, signal_top),
+        bbox_transform=signal_ax.transData,
+    )
+    prob_ax.legend(
+        loc="upper right",
+        bbox_to_anchor=(legend_x_ms, prob_top),
+        bbox_transform=prob_ax.transData,
     )
 
     def update(frame_number: int):
